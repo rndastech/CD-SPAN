@@ -2,7 +2,6 @@
 
 <div align="center">
 
-[![Paper](https://img.shields.io/badge/IEEE%20Paper-6%20Pages%20PDF-blue.svg)](CAD_SPAN_IEEE_Paper.pdf)
 [![Pretrained](https://img.shields.io/badge/Model%20Weights-Scale%20x4-success.svg)](experiments/pretrained_models/cad_span_x4.pth)
 [![PyTorch](https://img.shields.io/badge/PyTorch-1.11%2B-ee4c2c.svg?logo=pytorch)](https://pytorch.org/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE.txt)
@@ -25,21 +24,21 @@ Original Authors: Cheng Wan, Hongyuan Yu, Zhiqi Li, Yihang Chen, Yajun Zou, Yuqi
 
 ## 📌 Executive Summary & Motivation
 
-> Mobile rendering note: GitHub Android app can fail to render LaTeX math blocks. This README uses plain-text equations for compatibility.
-
 Single Image Super-Resolution (SISR) is an ill-posed inverse problem that demands reconstructing high-frequency spatial structures from low-resolution inputs under strict edge-hardware constraints. The recently proposed **Swift Parameter-free Attention Network (SPAN)** (CVPRW 2024 NTIRE Challenge winner) replaced parameter-heavy attention projections with an empirical origin-symmetric activation function:
 
-sigma_a(x) = sigmoid(x) - 0.5
+$$
+\sigma_a(x) = \text{sigmoid}(x) - 0.5
+$$
 
 While effective, theoretical and architectural inspection reveals three fundamental limitations:
-1. **Heuristic Formulation**: The activation sigma(x) - 0.5 lacks an analytical derivation grounded in symmetric activation manifolds and fixed zero-crossing rates.
+1. **Heuristic Formulation**: The activation $\sigma(x) - 0.5$ lacks an analytical derivation grounded in symmetric activation manifolds and fixed zero-crossing rates.
 2. **Isotropic Gradient Insensitivity**: Point-wise feature activations treat directional gradients (horizontal, vertical, diagonal transitions) identically to isotropic uniform areas.
 3. **Absence of High-Order Curvature Awareness**: Fine contours, inflection points, and junction extrema correspond mathematically to second-order spatial derivatives, which point-wise activations miss.
 
 To overcome these deficiencies, we propose **CAD-SPAN** (Curvature-Aware Directional Swift Attention Network), introducing:
-- **Theorem 1 (Analytical Equivalence)**: Proof that origin-symmetric attention is strictly equivalent to scaled hyperbolic tangent gating: sigma(x) - 0.5 = 0.5 * tanh(x / 2), with temperature steepness calibrated to tau* = 0.502.
-- **Dual-Differential Geometric Prior**: Parameter-free first-order directional Sobel gradient flux ||grad H||_2 coupled with second-order discrete isotropic Laplacian curvature Delta H.
-- **Strict Identity Fallback**: When gamma_s = gamma_l = 0 and tau = 0.5, CAD-SPAN collapses identically to baseline SPAN without numerical divergence.
+- **Theorem 1 (Analytical Equivalence)**: Proof that origin-symmetric attention is strictly equivalent to scaled hyperbolic tangent gating: $\sigma(x) - 0.5 \equiv \frac{1}{2}\tanh(\frac{x}{2})$, with temperature steepness calibrated to $\tau^* = 0.502$.
+- **Dual-Differential Geometric Prior**: Parameter-free first-order directional Sobel gradient flux $\|\nabla H\|_2$ coupled with second-order discrete isotropic Laplacian curvature $\Delta H$.
+- **Strict Identity Fallback**: When $\gamma_s = \gamma_l = 0$ and $\tau = 0.5$, CAD-SPAN collapses identically to baseline SPAN without numerical divergence.
 - **Dihedral Test-Time Self-Ensemble (CAD-SPAN+)**: 8-fold test-time symmetry averaging suppressing discretization jitter.
 
 ---
@@ -48,30 +47,42 @@ To overcome these deficiencies, we propose **CAD-SPAN** (Curvature-Aware Directi
 
 <div align="center">
   <img src="methodology_architecture.png" width="100%" alt="CAD-SPAN Methodology Architecture" />
-  <p><em>Figure 1: Comprehensive Methodology Architecture of CAD-SPAN. (a) Macro-Architecture displaying tensor dimensions across the 6 cascaded CAD-SPAB stages, hierarchical multi-stage concatenation [F0, Fb6, Fb1, Fb5_2], and PixelShuffle sub-pixel upsampling. (b) Micro-Architecture of CAD-SPAB displaying the 3-stage Conv3XC cascade, temperature-calibrated origin-symmetric gate Asym, Sobel (Kx, Ky) and Laplacian (KL) kernels, dual-differential modulator Phi(H), and gated residual output O = (H + Xin) * A_tilde.</em></p>
+  <p><em>Figure 1: Comprehensive Methodology Architecture of CAD-SPAN. (a) Macro-Architecture displaying tensor dimensions across the 6 cascaded CAD-SPAB stages, hierarchical multi-stage concatenation $[F_0, F_{b6}, F_{b1}, F_{b5\_2}]$, and PixelShuffle sub-pixel upsampling. (b) Micro-Architecture of CAD-SPAB displaying the 3-stage Conv3XC cascade, temperature-calibrated origin-symmetric gate $\mathcal{A}_{\text{sym}}$, Sobel ($K_x, K_y$) and Laplacian ($K_L$) kernels, dual-differential modulator $\Phi(H)$, and gated residual output $O = (H + X_{\text{in}}) \odot \tilde{\mathcal{A}}$.</em></p>
 </div>
 
 ### Mathematical Formulation of CAD-SPAB
-Given intermediate representation H in R^(B x C x H x W), with C = 48:
+Given intermediate feature representation $\mathbf{H} \in \mathbb{R}^{B \times C \times H \times W}$ (with $C = 48$):
 
 1. **Origin-Symmetric Gating**:
-  Asym(H) = 0.5 * tanh(tau * H), where tau* = 0.502
+   $$
+   \mathcal{A}_{\text{sym}}(\mathbf{H}) = \frac{1}{2} \tanh(\tau^* \mathbf{H}), \quad \tau^* = 0.502
+   $$
 
 2. **First-Order Directional Gradient Flux**:
-  Gx = Kx * H, Gy = Ky * H, ||grad H||_2 = sqrt(Gx^2 + Gy^2 + epsilon)
-  Kx = [[-1,0,1],[-2,0,2],[-1,0,1]]
-  Ky = [[-1,-2,-1],[0,0,0],[1,2,1]]
+   $$
+   \mathbf{G}_x = \mathbf{K}_x * \mathbf{H}, \quad \mathbf{G}_y = \mathbf{K}_y * \mathbf{H}, \quad \|\nabla \mathbf{H}\|_2 = \sqrt{\mathbf{G}_x^2 + \mathbf{G}_y^2 + \epsilon}
+   $$
+   $$
+   \mathbf{K}_x = \frac{1}{8}\begin{bmatrix} -1 & 0 & 1 \\ -2 & 0 & 2 \\ -1 & 0 & 1 \end{bmatrix}, \quad \mathbf{K}_y = \frac{1}{8}\begin{bmatrix} -1 & -2 & -1 \\ 0 & 0 & 0 \\ 1 & 2 & 1 \end{bmatrix}
+   $$
 
 3. **Second-Order Isotropic Laplacian Curvature**:
-  Delta H = |nabla^2 H| = |KL * H|, where KL = [[0,1,0],[1,-4,1],[0,1,0]]
+   $$
+   \Delta \mathbf{H} = |\nabla^2 \mathbf{H}| = |\mathbf{K}_L * \mathbf{H}|, \quad \text{where } \mathbf{K}_L = \begin{bmatrix} 0 & 1 & 0 \\ 1 & -4 & 1 \\ 0 & 1 & 0 \end{bmatrix}
+   $$
 
 4. **Dual-Differential Modulation**:
-  Phi(H) = tanh(gamma_s * ||grad H||_2 + gamma_l * Delta H),
-  gamma_s* = 0.008, gamma_l* = 0.001
+   $$
+   \Phi(\mathbf{H}) = \tanh(\gamma_s^* \|\nabla \mathbf{H}\|_2 + \gamma_l^* \Delta \mathbf{H}), \quad \gamma_s^* = 0.008, \; \gamma_l^* = 0.001
+   $$
 
 5. **Curvature-Modulated Attention & Output**:
-  A_tilde(H) = Asym(H) * (1 + Phi(H))
-  O = (H + Xin) * A_tilde(H)
+   $$
+   \tilde{\mathcal{A}}(\mathbf{H}) = \mathcal{A}_{\text{sym}}(\mathbf{H}) \cdot (1 + \Phi(\mathbf{H}))
+   $$
+   $$
+   \mathbf{O} = (\mathbf{H} + \mathbf{X}_{\text{in}}) \odot \tilde{\mathcal{A}}(\mathbf{H})
+   $$
 
 ---
 
@@ -111,13 +122,13 @@ Intricate geometric scenes display significant PSNR surges:
 
 <div align="center">
   <img src="ablation_curves.png" width="85%" alt="Parameter Ablation Curves" />
-  <p><em>Figure 3: Comprehensive Parameter Ablations. (a) Spatial gain optimization sweep with optimum at gamma* = 0.010; (b) Temperature calibration sweep with optimum at tau* = 0.502; (c) Differential operator comparison on Set5 showing dual Sobel + Laplacian superiority; (d) Per-image absolute PSNR gain bar chart.</em></p>
+  <p><em>Figure 3: Comprehensive Parameter Ablations. (a) Spatial gain optimization sweep with optimum at $\gamma^* = 0.010$; (b) Temperature calibration sweep with optimum at $\tau^* = 0.502$; (c) Differential operator comparison on Set5 showing dual Sobel + Laplacian superiority; (d) Per-image absolute PSNR gain bar chart.</em></p>
 </div>
 
 ### Mandatory Training Loss vs. Epochs Curve
 <div align="center">
   <img src="training_loss_curve.png" width="65%" alt="Training Loss vs Epochs" />
-  <p><em>Figure 4: Empirical L1 Pixel Loss across 20 training epochs on DIV2K paired patches, displaying smooth, monotonic convergence (0.04624 -> 0.02899).</em></p>
+  <p><em>Figure 4: Empirical L1 Pixel Loss across 20 training epochs on DIV2K paired patches, displaying smooth, monotonic convergence ($0.04624 \to 0.02899$).</em></p>
 </div>
 
 ---
@@ -172,15 +183,6 @@ python test_self_ensemble.py
 python generate_architecture_diagram.py
 python generate_ablation_graphs.py
 python generate_visual_comparison_monarch.py
-```
-
-### 6. Compile IEEE Conference Paper (LaTeX to PDF)
-The research paper is written in the official IEEE 2-column format (`IEEE-conference-template-062824.tex`) and compiled to **exactly 6 pages**:
-```bash
-# Compile via pdflatex or tectonic
-pdflatex IEEE-conference-template-062824.tex
-# or using tectonic:
-tectonic IEEE-conference-template-062824.tex
 ```
 
 ---
