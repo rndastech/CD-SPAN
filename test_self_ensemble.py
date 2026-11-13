@@ -4,7 +4,23 @@ import numpy as np
 import os
 import sys
 
-sys.path.insert(0, r"C:\Users\anike\.gemini\antigravity\scratch\SPAN")
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
+
+DATASETS_DIR = os.path.join(ROOT_DIR, 'datasets')
+PRETRAINED_DIR = os.path.join(ROOT_DIR, 'experiments', 'pretrained_models')
+
+
+def resolve_ckpt_path():
+    candidates = [
+        os.path.join(PRETRAINED_DIR, 'cad_span_x4.pth'),
+        os.path.join(PRETRAINED_DIR, 'spanx4_ch48.pth')
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    return candidates[-1]
 
 from basicsr.archs.span_arch import SPAN
 from basicsr.utils.img_util import img2tensor, tensor2img
@@ -12,7 +28,7 @@ from basicsr.metrics.psnr_ssim import calculate_psnr, calculate_ssim
 
 device = 'cpu'
 base_model = SPAN(3, 3, feature_channels=48, upscale=4).to(device)
-ckpt = torch.load(r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\experiments\pretrained_models\spanx4_ch48.pth", map_location='cpu')
+ckpt = torch.load(resolve_ckpt_path(), map_location='cpu')
 state = ckpt['params_ema'] if 'params_ema' in ckpt else ckpt['params']
 base_model.load_state_dict(state, strict=True)
 base_model.eval()
@@ -55,8 +71,8 @@ def forward_x8(model, lq_tensor):
     return avg_out
 
 # Test on Set5
-set5_lq = r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\datasets\Set5\LRbicx4"
-set5_gt = r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\datasets\Set5\GTmod12"
+set5_lq = os.path.join(DATASETS_DIR, 'Set5', 'LRbicx4')
+set5_gt = os.path.join(DATASETS_DIR, 'Set5', 'GTmod12')
 
 p_standard, p_ensemble = [], []
 s_standard, s_ensemble = [], []
@@ -68,7 +84,7 @@ for f in sorted(os.listdir(set5_lq)):
     gt = cv2.imread(os.path.join(set5_gt, f))
     h, w = gt.shape[:2]
     lq_t = img2tensor(lq, bgr2rgb=True, float32=True).unsqueeze(0).to(device)
-    
+
     # 1. Standard Forward
     with torch.no_grad():
         sr_std = model = base_model(lq_t)

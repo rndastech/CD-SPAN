@@ -8,8 +8,15 @@ import sys
 import numpy as np
 import time
 
-os.environ['MPLCONFIGDIR'] = r"C:\Users\anike\.gemini\antigravity\scratch\mpl_cache"
-sys.path.insert(0, r"C:\Users\anike\.gemini\antigravity\scratch\SPAN")
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
+
+DATASETS_DIR = os.path.join(ROOT_DIR, 'datasets')
+PRETRAINED_DIR = os.path.join(ROOT_DIR, 'experiments', 'pretrained_models')
+MPL_CACHE_DIR = os.path.join(ROOT_DIR, '.cache', 'matplotlib')
+os.makedirs(MPL_CACHE_DIR, exist_ok=True)
+os.environ['MPLCONFIGDIR'] = MPL_CACHE_DIR
 
 from basicsr.archs.span_arch import SPAN
 from basicsr.archs.ag_span_arch import AG_SPAN
@@ -17,15 +24,26 @@ from basicsr.utils.img_util import img2tensor, tensor2img
 from basicsr.metrics.psnr_ssim import calculate_psnr, calculate_ssim
 from train_ag_span import PairedCropDataset
 
+
+def resolve_ckpt_path():
+    candidates = [
+        os.path.join(PRETRAINED_DIR, 'cad_span_x4.pth'),
+        os.path.join(PRETRAINED_DIR, 'spanx4_ch48.pth')
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    return candidates[-1]
+
 device = 'cpu'
 
 # 1. Evaluator for Set5, Set14, BSD100
 def evaluate_all(model, device='cpu', max_bsd=20):
     model.eval()
-    
+
     # Set5
-    s5_lq = r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\datasets\Set5\LRbicx4"
-    s5_gt = r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\datasets\Set5\GTmod12"
+    s5_lq = os.path.join(DATASETS_DIR, 'Set5', 'LRbicx4')
+    s5_gt = os.path.join(DATASETS_DIR, 'Set5', 'GTmod12')
     s5_p, s5_s = [], []
     for f in sorted(os.listdir(s5_lq)):
         if not f.endswith('.png'): continue
@@ -39,10 +57,10 @@ def evaluate_all(model, device='cpu', max_bsd=20):
         sr = sr[:h, :w]
         s5_p.append(calculate_psnr(sr, gt, crop_border=4, test_y_channel=True))
         s5_s.append(calculate_ssim(sr, gt, crop_border=4, test_y_channel=True))
-        
+
     # Set14
-    s14_lq = r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\datasets\Set14\LRbicx4"
-    s14_gt = r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\datasets\Set14\GTmod12"
+    s14_lq = os.path.join(DATASETS_DIR, 'Set14', 'LRbicx4')
+    s14_gt = os.path.join(DATASETS_DIR, 'Set14', 'GTmod12')
     s14_p, s14_s = [], []
     for f in sorted(os.listdir(s14_lq)):
         if not f.endswith('.png'): continue
@@ -59,7 +77,7 @@ def evaluate_all(model, device='cpu', max_bsd=20):
         s14_s.append(calculate_ssim(sr, gt, crop_border=4, test_y_channel=True))
 
     # BSD100
-    bsd_dir = r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\datasets\BSD100\BSD100\image_SRF_4"
+    bsd_dir = os.path.join(DATASETS_DIR, 'BSD100', 'BSD100', 'image_SRF_4')
     bsd_p, bsd_s = [], []
     bsd_lr_files = sorted([f for f in os.listdir(bsd_dir) if f.endswith('_LR.png')])[:max_bsd]
     for lr_f in bsd_lr_files:
@@ -84,7 +102,7 @@ def evaluate_all(model, device='cpu', max_bsd=20):
 import cv2
 print("Evaluating Baseline SPAN...")
 base_model = SPAN(3, 3, feature_channels=48, upscale=4).to(device)
-ckpt = torch.load(r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\experiments\pretrained_models\spanx4_ch48.pth", map_location='cpu')
+ckpt = torch.load(resolve_ckpt_path(), map_location='cpu')
 state = ckpt['params_ema'] if 'params_ema' in ckpt else ckpt['params']
 base_model.load_state_dict(state, strict=True)
 res_base = evaluate_all(base_model, device)
@@ -105,8 +123,8 @@ res_ag_init = evaluate_all(ag_model, device)
 print(f"AG-SPAN (Init) -> Set5: {res_ag_init['set5'][0]:.4f} dB | Set14: {res_ag_init['set14'][0]:.4f} dB | BSD: {res_ag_init['bsd'][0]:.4f} dB")
 
 # Dataset
-hr_dir = r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\datasets\DIV2K_mini\HR"
-lr_dir = r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\datasets\DIV2K_mini\LR"
+hr_dir = os.path.join(DATASETS_DIR, 'DIV2K_mini', 'HR')
+lr_dir = os.path.join(DATASETS_DIR, 'DIV2K_mini', 'LR')
 dataset = PairedCropDataset(hr_dir, lr_dir, hr_crop_size=128, scale=4, num_samples=120)
 dataloader = DataLoader(dataset, batch_size=6, shuffle=True)
 
@@ -128,7 +146,7 @@ for epoch in range(1, 11):
         loss.backward()
         optimizer.step()
         total_loss += loss.item()
-    
+
     avg_loss = total_loss / len(dataloader)
     metrics = evaluate_all(ag_model, device)
     s5_p = metrics['set5'][0]
@@ -138,6 +156,8 @@ for epoch in range(1, 11):
         best_state = {k: v.cpu().clone() for k, v in ag_model.state_dict().items()}
 
 if best_state is not None:
-    torch.save({'params': best_state}, r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\experiments\pretrained_models\ag_span_tuned.pth")
+    os.makedirs(PRETRAINED_DIR, exist_ok=True)
+    tuned_path = os.path.join(PRETRAINED_DIR, 'ag_span_tuned.pth')
+    torch.save({'params': best_state}, tuned_path)
     print(f"Saved tuned model with Set5 PSNR: {best_set5:.4f} dB")
 

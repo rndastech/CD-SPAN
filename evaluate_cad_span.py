@@ -5,7 +5,23 @@ import os
 import sys
 import torch.nn.functional as F
 
-sys.path.insert(0, r"C:\Users\anike\.gemini\antigravity\scratch\SPAN")
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
+
+DATASETS_DIR = os.path.join(ROOT_DIR, 'datasets')
+PRETRAINED_DIR = os.path.join(ROOT_DIR, 'experiments', 'pretrained_models')
+
+
+def resolve_ckpt_path():
+    candidates = [
+        os.path.join(PRETRAINED_DIR, 'cad_span_x4.pth'),
+        os.path.join(PRETRAINED_DIR, 'spanx4_ch48.pth')
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    return candidates[-1]
 
 from basicsr.archs.span_arch import SPAN
 from basicsr.utils.img_util import img2tensor, tensor2img
@@ -49,21 +65,21 @@ def make_cad_forward(block, tau=0.502, gs=0.008, gl=0.001):
         out2 = block.c2_r(out1_act)
         out2_act = block.act1(out2)
         out3 = block.c3_r(out2_act)
-        
+
         # Origin-symmetric temperature calibrated attention
         att = 0.5 * torch.tanh(tau * out3)
         c = out3.size(1)
-        
+
         # Differential geometry priors: 1st order directional gradient + 2nd order Laplacian curvature
         kx = sobel_x.repeat(c, 1, 1, 1)
         ky = sobel_y.repeat(c, 1, 1, 1)
         klap = lap_kernel.repeat(c, 1, 1, 1)
-        
+
         gx = F.conv2d(out3, kx, padding=1, groups=c)
         gy = F.conv2d(out3, ky, padding=1, groups=c)
         grad_mag = torch.sqrt(gx**2 + gy**2 + 1e-6)
         lap_mag = torch.abs(F.conv2d(out3, klap, padding=1, groups=c))
-        
+
         # Dual differential modulation
         phi = torch.tanh(gs * grad_mag + gl * lap_mag)
         att = att * (1.0 + phi)
@@ -74,19 +90,19 @@ def make_cad_forward(block, tau=0.502, gs=0.008, gl=0.001):
 def load_pairs(dataset_name):
     pairs = []
     if dataset_name == "Set5":
-        lq_dir = r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\datasets\Set5\LRbicx4"
-        gt_dir = r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\datasets\Set5\GTmod12"
+        lq_dir = os.path.join(DATASETS_DIR, 'Set5', 'LRbicx4')
+        gt_dir = os.path.join(DATASETS_DIR, 'Set5', 'GTmod12')
         for f in sorted(os.listdir(lq_dir)):
             gt_p = os.path.join(gt_dir, f if os.path.exists(os.path.join(gt_dir, f)) else f.replace('.png', '_GT.png'))
             pairs.append((f, os.path.join(lq_dir, f), gt_p))
     elif dataset_name == "Set14":
-        lq_dir = r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\datasets\Set14\LRbicx4"
-        gt_dir = r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\datasets\Set14\GTmod12"
+        lq_dir = os.path.join(DATASETS_DIR, 'Set14', 'LRbicx4')
+        gt_dir = os.path.join(DATASETS_DIR, 'Set14', 'GTmod12')
         for f in sorted(os.listdir(lq_dir)):
             gt_p = os.path.join(gt_dir, f if os.path.exists(os.path.join(gt_dir, f)) else f.replace('.png', '_GT.png'))
             pairs.append((f, os.path.join(lq_dir, f), gt_p))
     elif dataset_name == "BSD100":
-        bsd_dir = r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\datasets\BSD100\BSD100\image_SRF_4"
+        bsd_dir = os.path.join(DATASETS_DIR, 'BSD100', 'BSD100', 'image_SRF_4')
         lr_files = sorted([f for f in os.listdir(bsd_dir) if f.endswith('_LR.png')])[:25]
         for f in lr_files:
             gt_p = os.path.join(bsd_dir, f.replace('_LR.png', '_HR.png'))
@@ -108,7 +124,7 @@ def evaluate(model, pairs, ensemble=False):
                 sr_t = forward_x8(model, lq_t)
             else:
                 sr_t = model(lq_t)
-        
+
         sr = tensor2img(sr_t.squeeze(0).cpu(), rgb2bgr=True, min_max=(0, 1))[:h, :w]
         p = calculate_psnr(sr, gt, crop_border=4, test_y_channel=True)
         s = calculate_ssim(sr, gt, crop_border=4, test_y_channel=True)
@@ -118,7 +134,8 @@ def evaluate(model, pairs, ensemble=False):
     return np.mean(psnrs), np.mean(ssims), results
 
 def main():
-    ckpt = torch.load(r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\experiments\pretrained_models\spanx4_ch48.pth", map_location='cpu')
+    ckpt_path = resolve_ckpt_path()
+    ckpt = torch.load(ckpt_path, map_location='cpu')
     state = ckpt.get('params_ema', ckpt.get('params'))
 
     # 1. Baseline SPAN
@@ -137,7 +154,7 @@ def main():
     for dname in datasets:
         print(f"\nEvaluating on {dname}...", flush=True)
         pairs = load_pairs(dname)
-        
+
         bp, bs, b_per = evaluate(base_model, pairs, ensemble=False)
         print(f"  [Baseline SPAN]       PSNR: {bp:.4f} dB | SSIM: {bs:.4f}", flush=True)
 

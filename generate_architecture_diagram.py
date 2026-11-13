@@ -1,5 +1,9 @@
 import os
-os.environ['MPLCONFIGDIR'] = r'C:\Users\anike\.gemini\antigravity\scratch\mpl_cache'
+
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+MPL_CACHE_DIR = os.path.join(ROOT_DIR, '.cache', 'matplotlib')
+os.makedirs(MPL_CACHE_DIR, exist_ok=True)
+os.environ['MPLCONFIGDIR'] = MPL_CACHE_DIR
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -311,6 +315,6 @@ ax.add_patch(fallback_box)
 ax.text(10.85, 0.41, r'Mathematical Identity Fallback Guarantee: When $\gamma_s = \gamma_l = 0$ and $\tau = 0.50$, $\Phi(H) \equiv 0$ and $\widetilde{A}(H) \equiv \sigma(H) - 0.5$ (Exact Baseline SPAB)',
         fontsize=6.8, fontweight='bold', color='#065F46', ha='center', va='center', zorder=4)
 
-out_arch = r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\methodology_architecture.png"
+out_arch = os.path.join(ROOT_DIR, 'methodology_architecture.png')
 plt.savefig(out_arch, bbox_inches='tight', dpi=300)
 print(f"Publication-grade Architecture Diagram saved successfully to {out_arch}")

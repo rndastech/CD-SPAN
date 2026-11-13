@@ -5,7 +5,23 @@ import os
 import sys
 import time
 
-sys.path.insert(0, r"C:\Users\anike\.gemini\antigravity\scratch\SPAN")
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
+
+DATASETS_DIR = os.path.join(ROOT_DIR, 'datasets')
+PRETRAINED_DIR = os.path.join(ROOT_DIR, 'experiments', 'pretrained_models')
+
+
+def resolve_ckpt_path():
+    candidates = [
+        os.path.join(PRETRAINED_DIR, 'cad_span_x4.pth'),
+        os.path.join(PRETRAINED_DIR, 'spanx4_ch48.pth')
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    return candidates[-1]
 
 from basicsr.archs.span_arch import SPAN
 from basicsr.archs.ag_span_arch import AG_SPAN
@@ -30,7 +46,7 @@ def forward_x8(model, lq_tensor):
     with torch.no_grad():
         for t in tfs:
             outs.append(model(t))
-    
+
     inv_outs = [
         outs[0],
         torch.flip(outs[1], [3]),
@@ -78,7 +94,7 @@ def evaluate_dataset(model, dataset_name, lq_dir, gt_dir, ensemble=False, max_im
     return np.mean(psnrs), np.mean(ssims), np.mean(latencies)
 
 # Load Models
-ckpt = torch.load(r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\experiments\pretrained_models\spanx4_ch48.pth", map_location='cpu')
+ckpt = torch.load(resolve_ckpt_path(), map_location='cpu')
 state = ckpt['params_ema'] if 'params_ema' in ckpt else ckpt['params']
 
 # 1. Baseline Model
@@ -89,16 +105,21 @@ base_model.load_state_dict(state, strict=True)
 ag_model = AG_SPAN(3, 3, feature_channels=48, upscale=4).to(device)
 ag_model.load_state_dict(state, strict=False)
 for block in [ag_model.block_1, ag_model.block_2, ag_model.block_3, ag_model.block_4, ag_model.block_5, ag_model.block_6]:
-    block.gamma.data.fill_(0.010)
+    if hasattr(block, 'gamma'):
+        block.gamma.data.fill_(0.010)
+    if hasattr(block, 'gamma_sobel'):
+        block.gamma_sobel.data.fill_(0.008)
+    if hasattr(block, 'gamma_lap'):
+        block.gamma_lap.data.fill_(0.001)
 
 # Paths
-s5_lq = r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\datasets\Set5\LRbicx4"
-s5_gt = r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\datasets\Set5\GTmod12"
+s5_lq = os.path.join(DATASETS_DIR, 'Set5', 'LRbicx4')
+s5_gt = os.path.join(DATASETS_DIR, 'Set5', 'GTmod12')
 
-s14_lq = r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\datasets\Set14\LRbicx4"
-s14_gt = r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\datasets\Set14\GTmod12"
+s14_lq = os.path.join(DATASETS_DIR, 'Set14', 'LRbicx4')
+s14_gt = os.path.join(DATASETS_DIR, 'Set14', 'GTmod12')
 
-bsd_dir = r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\datasets\BSD100\BSD100\image_SRF_4"
+bsd_dir = os.path.join(DATASETS_DIR, 'BSD100', 'BSD100', 'image_SRF_4')
 
 print("Evaluating across benchmarks: Set5, Set14, BSD100...")
 

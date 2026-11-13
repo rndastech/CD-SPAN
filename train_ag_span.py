@@ -4,8 +4,18 @@ import json
 import random
 import time
 
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
+
+DATASETS_DIR = os.path.join(ROOT_DIR, 'datasets')
+PRETRAINED_DIR = os.path.join(ROOT_DIR, 'experiments', 'pretrained_models')
+EXPERIMENTS_DIR = os.path.join(ROOT_DIR, 'experiments')
+
 # Set matplotlib cache directory before importing matplotlib
-os.environ['MPLCONFIGDIR'] = r"C:\Users\anike\.gemini\antigravity\scratch\mpl_cache"
+MPL_CACHE_DIR = os.path.join(ROOT_DIR, '.cache', 'matplotlib')
+os.makedirs(MPL_CACHE_DIR, exist_ok=True)
+os.environ['MPLCONFIGDIR'] = MPL_CACHE_DIR
 
 import torch
 import torch.nn as nn
@@ -15,11 +25,20 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 
-sys.path.insert(0, r"C:\Users\anike\.gemini\antigravity\scratch\SPAN")
-
 from basicsr.archs.ag_span_arch import AG_SPAN
 from basicsr.utils.img_util import img2tensor, tensor2img
 from basicsr.metrics.psnr_ssim import calculate_psnr, calculate_ssim
+
+
+def resolve_ckpt_path():
+    candidates = [
+        os.path.join(PRETRAINED_DIR, 'cad_span_x4.pth'),
+        os.path.join(PRETRAINED_DIR, 'spanx4_ch48.pth')
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    return candidates[-1]
 
 # Reproducibility
 torch.manual_seed(42)
@@ -34,7 +53,7 @@ class PairedCropDataset(Dataset):
         self.scale = scale
         self.lr_crop_size = hr_crop_size // scale
         self.num_samples = num_samples
-        
+
         self.filenames = sorted([f for f in os.listdir(hr_dir) if f.endswith('.png')])
         print(f"Loaded {len(self.filenames)} paired training images from {hr_dir}", flush=True)
 
@@ -50,10 +69,10 @@ class PairedCropDataset(Dataset):
         lr_img = cv2.imread(lr_path)
 
         h_lr, w_lr = lr_img.shape[:2]
-        
+
         lr_y = random.randint(0, max(0, h_lr - self.lr_crop_size))
         lr_x = random.randint(0, max(0, w_lr - self.lr_crop_size))
-        
+
         hr_y = lr_y * self.scale
         hr_x = lr_x * self.scale
 
@@ -88,7 +107,7 @@ def eval_dataset(model, dataset_name, lq_dir, gt_dir, device='cpu'):
         gt = cv2.imread(gt_path)
 
         lq_t = img2tensor(lq, bgr2rgb=True, float32=True).unsqueeze(0).to(device)
-        
+
         t0 = time.perf_counter()
         with torch.no_grad():
             sr_t = model(lq_t)
@@ -111,29 +130,29 @@ def main():
     model = AG_SPAN(num_in_ch=3, num_out_ch=3, feature_channels=48, upscale=4).to(device)
 
     # Load baseline pretrained weights
-    ckpt_path = r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\experiments\pretrained_models\spanx4_ch48.pth"
+    ckpt_path = resolve_ckpt_path()
     ckpt = torch.load(ckpt_path, map_location='cpu')
     state = ckpt['params_ema'] if 'params_ema' in ckpt else ckpt['params']
     model.load_state_dict(state, strict=False)
     print("Baseline weights loaded into AG-SPAN.", flush=True)
 
     # Datasets
-    set5_lq = r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\datasets\Set5\LRbicx4"
-    set5_gt = r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\datasets\Set5\GTmod12"
-    set14_lq = r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\datasets\Set14\LRbicx4"
-    set14_gt = r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\datasets\Set14\GTmod12"
+    set5_lq = os.path.join(DATASETS_DIR, 'Set5', 'LRbicx4')
+    set5_gt = os.path.join(DATASETS_DIR, 'Set5', 'GTmod12')
+    set14_lq = os.path.join(DATASETS_DIR, 'Set14', 'LRbicx4')
+    set14_gt = os.path.join(DATASETS_DIR, 'Set14', 'GTmod12')
 
     init_s5_p, init_s5_s, init_lat = eval_dataset(model, "Set5", set5_lq, set5_gt, device)
     print(f"Baseline (Epoch 0) -> Set5 PSNR: {init_s5_p:.4f} dB, SSIM: {init_s5_s:.4f}", flush=True)
 
     # Training Data
-    hr_dir = r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\datasets\DIV2K_mini\HR"
-    lr_dir = r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\datasets\DIV2K_mini\LR"
-    
+    hr_dir = os.path.join(DATASETS_DIR, 'DIV2K_mini', 'HR')
+    lr_dir = os.path.join(DATASETS_DIR, 'DIV2K_mini', 'LR')
+
     batch_size = 8
     num_samples = 160 # 20 batches per epoch
     epochs = 20
-    
+
     dataset = PairedCropDataset(hr_dir, lr_dir, hr_crop_size=128, scale=4, num_samples=num_samples)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=0)
 
@@ -157,14 +176,16 @@ def main():
     epoch_losses = []
     val_records = []
     best_psnr = init_s5_p
-    best_ckpt_path = r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\experiments\pretrained_models\ag_span_x4_best.pth"
+    os.makedirs(PRETRAINED_DIR, exist_ok=True)
+    os.makedirs(EXPERIMENTS_DIR, exist_ok=True)
+    best_ckpt_path = os.path.join(PRETRAINED_DIR, 'ag_span_x4_best.pth')
 
     print("\n--- Training Loop Starting ---", flush=True)
     t_start = time.time()
     for epoch in range(1, epochs + 1):
         model.train()
         running_loss = 0.0
-        
+
         for lr_b, hr_b in dataloader:
             lr_b = lr_b.to(device)
             hr_b = hr_b.to(device)
@@ -211,7 +232,7 @@ def main():
     ax.grid(True, linestyle='--', alpha=0.6)
     ax.legend(fontsize=11)
     plt.tight_layout()
-    plot_loss_path = r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\experiments\training_loss_curve.png"
+    plot_loss_path = os.path.join(ROOT_DIR, 'training_loss_curve.png')
     plt.savefig(plot_loss_path)
     plt.close()
     print(f"Loss plot saved to: {plot_loss_path}", flush=True)
@@ -221,7 +242,7 @@ def main():
     # Load best weights
     best_ckpt = torch.load(best_ckpt_path, map_location='cpu')
     model.load_state_dict(best_ckpt['params'])
-    
+
     ag_s5_p, ag_s5_s, ag_s5_t = eval_dataset(model, "Set5", set5_lq, set5_gt, device)
     ag_s14_p, ag_s14_s, ag_s14_t = eval_dataset(model, "Set14", set14_lq, set14_gt, device)
 
@@ -250,7 +271,7 @@ def main():
         'val_records': val_records
     }
 
-    results_path = r"C:\Users\anike\.gemini\antigravity\scratch\SPAN\experiments\final_comparative_results.json"
+    results_path = os.path.join(EXPERIMENTS_DIR, 'final_comparative_results.json')
     with open(results_path, 'w') as f:
         json.dump(results, f, indent=2)
 

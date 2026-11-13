@@ -157,3 +157,8 @@ class CAD_SPAN(nn.Module):
             torch.rot90(outs[7], 1, [2, 3])
         ]
         return torch.stack(inv_outs, dim=0).mean(dim=0)
+
+
+# Aliases for backward compatibility
+AG_SPAN = CAD_SPAN
+AG_SPAB = CAD_SPAB
