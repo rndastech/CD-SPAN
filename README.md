@@ -51,38 +51,46 @@ To overcome these deficiencies, we propose **CAD-SPAN** (Curvature-Aware Directi
 </div>
 
 ### Mathematical Formulation of CAD-SPAB
+
 Given intermediate feature representation $\mathbf{H} \in \mathbb{R}^{B \times C \times H \times W}$ (with $C = 48$):
 
-1. **Origin-Symmetric Gating**:
-   $$
-   \mathcal{A}_{\text{sym}}(\mathbf{H}) = \frac{1}{2} \tanh(\tau^* \mathbf{H}), \quad \tau^* = 0.502
-   $$
+**1. Origin-Symmetric Gating**:
 
-2. **First-Order Directional Gradient Flux**:
-   $$
-   \mathbf{G}_x = \mathbf{K}_x * \mathbf{H}, \quad \mathbf{G}_y = \mathbf{K}_y * \mathbf{H}, \quad \|\nabla \mathbf{H}\|_2 = \sqrt{\mathbf{G}_x^2 + \mathbf{G}_y^2 + \epsilon}
-   $$
-   $$
-   \mathbf{K}_x = \frac{1}{8}\begin{bmatrix} -1 & 0 & 1 \\ -2 & 0 & 2 \\ -1 & 0 & 1 \end{bmatrix}, \quad \mathbf{K}_y = \frac{1}{8}\begin{bmatrix} -1 & -2 & -1 \\ 0 & 0 & 0 \\ 1 & 2 & 1 \end{bmatrix}
-   $$
+$$
+\mathcal{A}_{\text{sym}}(\mathbf{H}) = \frac{1}{2} \tanh(\tau^* \mathbf{H}), \quad \tau^* = 0.502
+$$
 
-3. **Second-Order Isotropic Laplacian Curvature**:
-   $$
-   \Delta \mathbf{H} = |\nabla^2 \mathbf{H}| = |\mathbf{K}_L * \mathbf{H}|, \quad \text{where } \mathbf{K}_L = \begin{bmatrix} 0 & 1 & 0 \\ 1 & -4 & 1 \\ 0 & 1 & 0 \end{bmatrix}
-   $$
+**2. First-Order Directional Gradient Flux**:
 
-4. **Dual-Differential Modulation**:
-   $$
-   \Phi(\mathbf{H}) = \tanh(\gamma_s^* \|\nabla \mathbf{H}\|_2 + \gamma_l^* \Delta \mathbf{H}), \quad \gamma_s^* = 0.008, \; \gamma_l^* = 0.001
-   $$
+$$
+\mathbf{G}_x = \mathbf{K}_x * \mathbf{H}, \quad \mathbf{G}_y = \mathbf{K}_y * \mathbf{H}, \quad \|\nabla \mathbf{H}\|_2 = \sqrt{\mathbf{G}_x^2 + \mathbf{G}_y^2 + \epsilon}
+$$
 
-5. **Curvature-Modulated Attention & Output**:
-   $$
-   \tilde{\mathcal{A}}(\mathbf{H}) = \mathcal{A}_{\text{sym}}(\mathbf{H}) \cdot (1 + \Phi(\mathbf{H}))
-   $$
-   $$
-   \mathbf{O} = (\mathbf{H} + \mathbf{X}_{\text{in}}) \odot \tilde{\mathcal{A}}(\mathbf{H})
-   $$
+$$
+\mathbf{K}_x = \frac{1}{8}\begin{bmatrix} -1 & 0 & 1 \\ -2 & 0 & 2 \\ -1 & 0 & 1 \end{bmatrix}, \quad \mathbf{K}_y = \frac{1}{8}\begin{bmatrix} -1 & -2 & -1 \\ 0 & 0 & 0 \\ 1 & 2 & 1 \end{bmatrix}
+$$
+
+**3. Second-Order Isotropic Laplacian Curvature**:
+
+$$
+\Delta \mathbf{H} = |\nabla^2 \mathbf{H}| = |\mathbf{K}_L * \mathbf{H}|, \quad \text{where } \mathbf{K}_L = \begin{bmatrix} 0 & 1 & 0 \\ 1 & -4 & 1 \\ 0 & 1 & 0 \end{bmatrix}
+$$
+
+**4. Dual-Differential Modulation**:
+
+$$
+\Phi(\mathbf{H}) = \tanh(\gamma_s^* \|\nabla \mathbf{H}\|_2 + \gamma_l^* \Delta \mathbf{H}), \quad \gamma_s^* = 0.008, \; \gamma_l^* = 0.001
+$$
+
+**5. Curvature-Modulated Attention & Output**:
+
+$$
+\tilde{\mathcal{A}}(\mathbf{H}) = \mathcal{A}_{\text{sym}}(\mathbf{H}) \cdot (1 + \Phi(\mathbf{H}))
+$$
+
+$$
+\mathbf{O} = (\mathbf{H} + \mathbf{X}_{\text{in}}) \odot \tilde{\mathcal{A}}(\mathbf{H})
+$$
 
 ---
 
